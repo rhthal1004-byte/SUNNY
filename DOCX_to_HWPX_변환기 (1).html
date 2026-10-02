@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DOCX → HWPX 변환기</title>
+<style>
+:root{
+  --bg:#f4f6f9;--card:#fff;--text:#1f2937;--muted:#667085;--line:#d9dee7;
+  --accent:#3157d5;--accent2:#2346b8;--ok:#18794e;--warn:#a15c00;--danger:#b42318;
+  --shadow:0 12px 34px rgba(20,30,55,.09);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Pretendard","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:1080px;margin:0 auto;padding:34px 20px 60px}
+header{margin-bottom:22px}
+h1{margin:0 0 8px;font-size:30px;letter-spacing:-.04em}
+.sub{color:var(--muted);font-size:14px;line-height:1.6}
+.card{background:var(--card);border:1px solid #e4e7ec;border-radius:18px;box-shadow:var(--shadow);padding:22px;margin-top:18px}
+.drop{border:2px dashed #b9c1d1;border-radius:16px;padding:34px 20px;text-align:center;transition:.2s;background:#fafbfc}
+.drop.drag{border-color:var(--accent);background:#f3f6ff}
+.drop strong{display:block;font-size:17px;margin-bottom:7px}
+.drop input{display:none}
+button,.fileBtn{appearance:none;border:0;border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer;font-size:14px}
+.fileBtn{display:inline-block;background:var(--accent);color:#fff;margin-top:12px}
+button.primary{background:var(--accent);color:#fff}
+button.primary:hover,.fileBtn:hover{background:var(--accent2)}
+button.secondary{background:#eef1f6;color:#344054}
+button:disabled{opacity:.45;cursor:not-allowed}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.infoGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}
+.stat{border:1px solid var(--line);border-radius:12px;padding:14px;background:#fbfcfe}
+.stat .n{font-size:21px;font-weight:800;margin-top:3px}
+.stat .k{font-size:12px;color:var(--muted)}
+.status{margin-top:16px;padding:13px 14px;border-radius:11px;background:#f7f8fa;border:1px solid var(--line);font-size:14px;line-height:1.55;white-space:pre-wrap}
+.status.ok{background:#edf8f2;border-color:#b7e1ca;color:var(--ok)}
+.status.warn{background:#fff8eb;border-color:#efd7a7;color:var(--warn)}
+.status.err{background:#fff1f0;border-color:#f0b7b3;color:var(--danger)}
+.progressWrap{display:none;margin-top:14px}
+.progress{height:8px;background:#e8ebf1;border-radius:99px;overflow:hidden}
+.bar{height:100%;width:0;background:var(--accent);transition:width .15s}
+.small{font-size:12px;color:var(--muted);margin-top:7px}
+.options{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.opt{border:1px solid var(--line);border-radius:12px;padding:13px 14px}
+.opt label{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:650}
+.opt p{font-size:12px;color:var(--muted);margin:7px 0 0;line-height:1.55}
+.preview{max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:16px;background:#fff}
+.pv-p{margin:6px 0;white-space:pre-wrap}
+.pv-table{border-collapse:collapse;margin:12px 0;width:100%;font-size:13px}
+.pv-table td{border:1px solid #9da5b4;padding:7px;vertical-align:top}
+.notice{font-size:12px;color:var(--muted);line-height:1.6;margin-top:16px}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.badge{font-size:11px;padding:5px 8px;border-radius:99px;background:#eef1f6;color:#475467}
+@media(max-width:760px){.infoGrid{grid-template-columns:1fr 1fr}.options{grid-template-columns:1fr}.wrap{padding:20px 12px 40px}h1{font-size:25px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>DOCX → HWPX 변환기</h1>
+    <div class="sub">Word 문서의 글자 서식·문단 정렬·표 구조·셀 병합·페이지 여백을 분석해 편집 가능한 HWPX로 변환합니다. 모든 처리는 이 브라우저 안에서만 수행됩니다.</div>
+  </header>
+
+  <div class="card">
+    <div id="drop" class="drop">
+      <strong>DOCX 파일을 여기에 끌어놓으세요</strong>
+      <span class="sub">또는 아래 버튼으로 파일을 선택하세요.</span><br>
+      <label class="fileBtn" for="file">DOCX 선택</label>
+      <input id="file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+    </div>
+    <div id="fileName" class="status" style="display:none"></div>
+
+    <div class="infoGrid">
+      <div class="stat"><div class="k">문단</div><div id="stP" class="n">-</div></div>
+      <div class="stat"><div class="k">표</div><div id="stT" class="n">-</div></div>
+      <div class="stat"><div class="k">표 셀</div><div id="stC" class="n">-</div></div>
+      <div class="stat"><div class="k">글꼴</div><div id="stF" class="n">-</div></div>
+    </div>
+
+    <div class="toolbar">
+      <button id="analyze" class="secondary" disabled>문서 분석</button>
+      <button id="convert" class="primary" disabled>HWPX 변환 및 저장</button>
+    </div>
+
+    <div class="progressWrap" id="pw">
+      <div class="progress"><div id="bar" class="bar"></div></div>
+      <div id="progText" class="small"></div>
+    </div>
+    <div id="status" class="status">DOCX 파일을 선택하면 변환 준비를 시작합니다.</div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">변환 옵션</h3>
+    <div class="options">
+      <div class="opt"><label><input id="keepFont" type="checkbox" checked> Word 글꼴·크기·굵기 유지</label><p>DOCX의 run 서식을 HWPX 글자 모양으로 변환합니다.</p></div>
+      <div class="opt"><label><input id="keepTable" type="checkbox" checked> 표 너비·병합·음영 최대 유지</label><p>gridSpan, vMerge, 셀 너비, 배경색을 HWPX 표 속성으로 옮깁니다.</p></div>
+      <div class="opt"><label><input id="fallback" type="checkbox" checked> 누락 글꼴은 맑은 고딕 사용</label><p>대상 PC에 Word 글꼴이 없을 때 글자 폭이 과도하게 달라지는 현상을 줄입니다.</p></div>
+      <div class="opt"><label><input id="safeMode" type="checkbox" checked> 호환성 우선 모드</label><p>복잡한 Word 전용 개체는 제외하고 본문과 표가 정상적으로 열리도록 우선합니다.</p></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">구조 미리보기</h3>
+    <div id="preview" class="preview"><span class="sub">아직 분석된 문서가 없습니다.</span></div>
+    <div id="warnings" class="notice"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">지원 범위</h3>
+    <div class="badges">
+      <span class="badge">일반 텍스트</span><span class="badge">굵게/기울임/밑줄</span><span class="badge">글꼴/크기/색상</span>
+      <span class="badge">좌/중앙/우/양쪽 정렬</span><span class="badge">표</span><span class="badge">가로 셀 병합</span><span class="badge">세로 셀 병합</span>
+      <span class="badge">셀 음영</span><span class="badge">A4 및 사용자 용지 크기</span><span class="badge">페이지 여백</span>
+    </div>
+    <div class="notice">
+      텍스트 상자, SmartArt, WordArt, 차트, OLE, 복잡한 도형, 수식, 각주/미주, 추적 변경, 매크로 등 Word 전용 기능은 두 형식의 객체 모델이 달라 완전 동일 변환을 보장할 수 없습니다.
+      특히 공공문서처럼 표와 텍스트가 중심인 DOCX에 적합합니다.
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ----------------------- utility ----------------------- */
+const $ = s => document.querySelector(s);
+const enc = new TextEncoder(), dec = new TextDecoder("utf-8");
+function esc(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
+function localName(el){return el?.localName||""}
+function elems(parent,name){return [...parent.children].filter(x=>localName(x)===name)}
+function child(parent,name){return elems(parent,name)[0]||null}
+function descendants(parent,name){return [...parent.getElementsByTagNameNS("*",name)]}
+function attr(el,name){ if(!el) return null; for(const a of el.attributes||[]) if(a.localName===name) return a.value; return null; }
+function int(v,d=0){const n=parseInt(v,10);return Number.isFinite(n)?n:d}
+function hexColor(v,d="#000000"){ if(!v||v==="auto") return d; v=v.replace("#",""); return /^[0-9a-fA-F]{6}$/.test(v)?"#"+v.toUpperCase():d; }
+function setStatus(msg,type=""){const s=$("#status");s.textContent=msg;s.className="status "+type}
+function progress(p,t){$("#pw").style.display="block";$("#bar").style.width=p+"%";$("#progText").textContent=t||""}
+function nsParse(txt){return new DOMParser().parseFromString(txt,"application/xml")}
+function downloadBlob(blob,name){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
+
+/* ----------------------- CRC32 ----------------------- */
+const CRCT = (()=>{let t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(u8){let c=0xFFFFFFFF;for(const b of u8)c=CRCT[(c^b)&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+function u16(n){return [n&255,(n>>>8)&255]}
+function u32(n){return [n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]}
+
+/* ----------------------- minimal ZIP reader/writer ----------------------- */
+class ZipReader{
+  constructor(buf){this.u8=new Uint8Array(buf);this.dv=new DataView(buf);this.entries=new Map();this.parse()}
+  findEOCD(){
+    for(let i=this.u8.length-22;i>=Math.max(0,this.u8.length-65557);i--){
+      if(this.dv.getUint32(i,true)===0x06054b50)return i;
+    } throw new Error("ZIP 중앙 디렉터리를 찾지 못했습니다.");
+  }
+  parse(){
+    const e=this.findEOCD(); const total=this.dv.getUint16(e+10,true), cdOff=this.dv.getUint32(e+16,true);
+    let p=cdOff;
+    for(let i=0;i<total;i++){
+      if(this.dv.getUint32(p,true)!==0x02014b50)throw new Error("손상된 ZIP 중앙 디렉터리입니다.");
+      const method=this.dv.getUint16(p+10,true), csize=this.dv.getUint32(p+20,true), usize=this.dv.getUint32(p+24,true);
+      const nl=this.dv.getUint16(p+28,true), xl=this.dv.getUint16(p+30,true), cl=this.dv.getUint16(p+32,true), lo=this.dv.getUint32(p+42,true);
+      const name=dec.decode(this.u8.slice(p+46,p+46+nl));
+      this.entries.set(name,{name,method,csize,usize,lo});
+      p+=46+nl+xl+cl;
+    }
+  }
+  has(name){return this.entries.has(name)}
+  async bytes(name){
+    const e=this.entries.get(name); if(!e)throw new Error("DOCX 내부 파일 없음: "+name);
+    let p=e.lo; if(this.dv.getUint32(p,true)!==0x04034b50)throw new Error("잘못된 ZIP 로컬 헤더");
+    const nl=this.dv.getUint16(p+26,true), xl=this.dv.getUint16(p+28,true); const start=p+30+nl+xl;
+    const src=this.u8.slice(start,start+e.csize);
+    if(e.method===0)return src;
+    if(e.method===8){
+      if(!("DecompressionStream" in window))throw new Error("이 브라우저는 ZIP 압축 해제를 지원하지 않습니다. 최신 Chrome/Edge를 사용하세요.");
+      const ds=new DecompressionStream("deflate-raw");
+      const ab=await new Response(new Blob([src]).stream().pipeThrough(ds)).arrayBuffer();
+      return new Uint8Array(ab);
+    }
+    throw new Error("지원하지 않는 ZIP 압축 방식: "+e.method);
+  }
+  async text(name){return dec.decode(await this.bytes(name))}
+}
+class ZipWriter{
+  constructor(){this.files=[]}
+  add(name,data){
+    let b=typeof data==="string"?enc.encode(data):(data instanceof Uint8Array?data:new Uint8Array(data));
+    this.files.push({name,b,crc:crc32(b)})
+  }
+  build(){
+    const locals=[], centrals=[]; let offset=0;
+    for(const f of this.files){
+      const n=enc.encode(f.name);
+      const lh=new Uint8Array([80,75,3,4,20,0,0,0,0,0,0,0,0,0,...u32(f.crc),...u32(f.b.length),...u32(f.b.length),...u16(n.length),0,0]);
+      const chunk=new Uint8Array(lh.length+n.length+f.b.length);chunk.set(lh);chunk.set(n,lh.length);chunk.set(f.b,lh.length+n.length);locals.push(chunk);
+      const ch=new Uint8Array([80,75,1,2,20,0,20,0,0,0,0,0,0,0,...u32(f.crc),...u32(f.b.length),...u32(f.b.length),...u16(n.length),0,0,0,0,0,0,0,0,0,0,0,0,...u32(offset)]);
+      const cc=new Uint8Array(ch.length+n.length);cc.set(ch);cc.set(n,ch.length);centrals.push(cc);offset+=chunk.length;
+    }
+    const cdSize=centrals.reduce((a,b)=>a+b.length,0), cdOff=offset, cnt=this.files.length;
+    const eocd=new Uint8Array([80,75,5,6,0,0,0,0,...u16(cnt),...u16(cnt),...u32(cdSize),...u32(cdOff),0,0]);
+    const total=locals.reduce((a,b)=>a+b.length,0)+cdSize+eocd.length;
+    const out=new Uint8Array(total);let p=0;for(const x of locals){out.set(x,p);p+=x.length}for(const x of centrals){out.set(x,p);p+=x.length}out.set(eocd,p);return out;
+  }
+}
+
+/* ----------------------- DOCX parser ----------------------- */
+let selectedFile=null, model=null;
+const defaultRun={font:"맑은 고딕",size:10,b:false,i:false,u:false,color:"#000000"};
+const defaultPara={align:"JUSTIFY",left:0,right:0,first:0,before:0,after:0,line:160};
+
+function styleRunFromPr(rPr){
+  if(!rPr)return {};
+  const rFonts=child(rPr,"rFonts"), sz=child(rPr,"sz"), color=child(rPr,"color");
+  return {
+    font: attr(rFonts,"eastAsia")||attr(rFonts,"ascii")||attr(rFonts,"hAnsi")||undefined,
+    size: sz?int(attr(sz,"val"),20)/2:undefined,
+    b: child(rPr,"b")?attr(child(rPr,"b"),"val")!=="0":undefined,
+    i: child(rPr,"i")?attr(child(rPr,"i"),"val")!=="0":undefined,
+    u: child(rPr,"u")?attr(child(rPr,"u"),"val")!=="none":undefined,
+    color: color?hexColor(attr(color,"val")):undefined
+  };
+}
+function styleParaFromPr(pPr){
+  if(!pPr)return {};
+  const jc=child(pPr,"jc"), indn=child(pPr,"ind"), sp=child(pPr,"spacing");
+  const amap={left:"LEFT",center:"CENTER",right:"RIGHT",both:"JUSTIFY",distribute:"DISTRIBUTE"};
+  return {
+    align: jc?(amap[attr(jc,"val")]||"JUSTIFY"):undefined,
+    left: indn?int(attr(indn,"left"))*5:undefined,
+    right: indn?int(attr(indn,"right"))*5:undefined,
+    first: indn?(int(attr(indn,"firstLine"))-int(attr(indn,"hanging")))*5:undefined,
+    before: sp?int(attr(sp,"before"))*5:undefined,
+    after: sp?int(attr(sp,"after"))*5:undefined,
+    line: sp&&attr(sp,"line")?Math.max(80,Math.round(int(attr(sp,"line"))/240*160)):undefined
+  };
+}
+function merge(a,b){const o={...a};for(const [k,v] of Object.entries(b||{}))if(v!==undefined)o[k]=v;return o}
+
+async function parseDocx(file){
+  progress(8,"DOCX 압축 구조 읽는 중");
+  const zr=new ZipReader(await file.arrayBuffer());
+  if(!zr.has("word/document.xml"))throw new Error("유효한 DOCX가 아닙니다.");
+
+  const doc=nsParse(await zr.text("word/document.xml"));
+  let styles={run:new Map(),para:new Map()}, defaults={run:{...defaultRun},para:{...defaultPara}};
+  if(zr.has("word/styles.xml")){
+    progress(18,"Word 스타일 분석 중");
+    const sx=nsParse(await zr.text("word/styles.xml"));
+    const dd=descendants(sx,"docDefaults")[0];
+    if(dd){
+      const rp=descendants(dd,"rPrDefault")[0], pp=descendants(dd,"pPrDefault")[0];
+      if(rp)defaults.run=merge(defaults.run,styleRunFromPr(descendants(rp,"rPr")[0]));
+      if(pp)defaults.para=merge(defaults.para,styleParaFromPr(descendants(pp,"pPr")[0]));
+    }
+    for(const st of descendants(sx,"style")){
+      const id=attr(st,"styleId"); if(!id)continue;
+      const typ=attr(st,"type"), based=child(st,"basedOn")?attr(child(st,"basedOn"),"val"):null;
+      const rec={id,based,run:styleRunFromPr(child(st,"rPr")),para:styleParaFromPr(child(st,"pPr"))};
+      if(typ==="character")styles.run.set(id,rec); else styles.para.set(id,rec);
+    }
+  }
+  function resolveStyle(map,id,key,seen=new Set()){
+    if(!id||seen.has(id)||!map.has(id))return {};
+    seen.add(id); const s=map.get(id); return merge(resolveStyle(map,s.based,key,seen),s[key]);
+  }
+  function parseRun(r,pStyle){
+    let st={...defaults.run};
+    const rs=child(r,"rPr"), rStyle=rs&&child(rs,"rStyle")?attr(child(rs,"rStyle"),"val"):null;
+    st=merge(st,resolveStyle(styles.run,rStyle,"run"));
+    st=merge(st,resolveStyle(styles.para,pStyle,"run"));
+    st=merge(st,styleRunFromPr(rs));
+    let text="";
+    for(const n of r.childNodes){
+      if(n.nodeType!==1)continue;
+      const ln=localName(n);
+      if(ln==="t"||ln==="instrText") text+=n.textContent;
+      else if(ln==="tab")text+="\t";
+      else if(ln==="br"||ln==="cr")text+="\n";
+    }
+    return {text,style:st};
+  }
+  function parseParagraph(p){
+    const pPr=child(p,"pPr"), ps= pPr&&child(pPr,"pStyle")?attr(child(pPr,"pStyle"),"val"):null;
+    let pst={...defaults.para}; pst=merge(pst,resolveStyle(styles.para,ps,"para")); pst=merge(pst,styleParaFromPr(pPr));
+    const runs=[];
+    for(const n of p.children){
+      if(localName(n)==="r"){const rr=parseRun(n,ps); if(rr.text!==""||n.children.length)runs.push(rr)}
+      else if(localName(n)==="hyperlink"){for(const r of elems(n,"r"))runs.push(parseRun(r,ps))}
+    }
+    if(!runs.length)runs.push({text:"",style:{...defaults.run}});
+    return {type:"p",style:pst,runs};
+  }
+  function parseCell(tc){
+    const tcPr=child(tc,"tcPr"), span=int(attr(child(tcPr,"gridSpan"),"val"),1);
+    const vm=child(tcPr,"vMerge"); let vMerge=null;if(vm)vMerge=attr(vm,"val")||"continue";
+    const shd=child(tcPr,"shd"), tcW=child(tcPr,"tcW");
+    const blocks=[]; for(const n of tc.children){if(localName(n)==="p")blocks.push(parseParagraph(n));else if(localName(n)==="tbl")blocks.push(parseTable(n))}
+    return {span,vMerge,fill:shd?hexColor(attr(shd,"fill"),"#FFFFFF"):"#FFFFFF",width:tcW?int(attr(tcW,"w"))*5:0,blocks};
+  }
+  function parseTable(tbl){
+    const grid=child(tbl,"tblGrid"); const gridWidths=grid?elems(grid,"gridCol").map(x=>int(attr(x,"w"))*5):[];
+    const rows=[];
+    for(const tr of elems(tbl,"tr"))rows.push(elems(tr,"tc").map(parseCell));
+    // vertical merge rowSpan calculation
+    for(let r=0;r<rows.length;r++){
+      let col=0;
+      for(let ci=0;ci<rows[r].length;ci++){
+        const c=rows[r][ci]; c.col=col;c.rowSpan=1;c.skip=false;
+        if(c.vMerge==="restart"){
+          let rr=r+1;while(rr<rows.length){
+            let ccol=0, found=null;
+            for(const cc of rows[rr]){if(ccol===col){found=cc;break}ccol+=cc.span}
+            if(!found||found.vMerge!=="continue")break;
+            found.skip=true;c.rowSpan++;rr++;
+          }
+        } else if(c.vMerge==="continue") c.skip=true;
+        col+=c.span;
+      }
+    }
+    const colCnt=Math.max(gridWidths.length,...rows.map(row=>row.reduce((s,c)=>s+c.span,0)),1);
+    return {type:"table",gridWidths,rows,colCnt};
+  }
+
+  progress(35,"본문과 표 구조 분석 중");
+  const body=descendants(doc,"body")[0], blocks=[];
+  for(const n of body.children){if(localName(n)==="p")blocks.push(parseParagraph(n));else if(localName(n)==="tbl")blocks.push(parseTable(n))}
+  const sect=child(body,"sectPr");
+  const pgSz=sect?child(sect,"pgSz"):null, pgMar=sect?child(sect,"pgMar"):null;
+  const page={
+    width:(pgSz?int(attr(pgSz,"w"),11906):11906)*5,
+    height:(pgSz?int(attr(pgSz,"h"),16838):16838)*5,
+    left:(pgMar?int(attr(pgMar,"left"),1440):1440)*5,
+    right:(pgMar?int(attr(pgMar,"right"),1440):1440)*5,
+    top:(pgMar?int(attr(pgMar,"top"),1440):1440)*5,
+    bottom:(pgMar?int(attr(pgMar,"bottom"),1440):1440)*5,
+    header:(pgMar?int(attr(pgMar,"header"),720):720)*5,
+    footer:(pgMar?int(attr(pgMar,"footer"),720):720)*5
+  };
+  const fonts=new Set(), stats={p:0,t:0,c:0};
+  const walk=b=>{
+    if(b.type==="p"){stats.p++;for(const r of b.runs)fonts.add(r.style.font||defaults.run.font)}
+    else{stats.t++;for(const row of b.rows)for(const c of row){stats.c++;for(const bb of c.blocks)walk(bb)}}
+  };blocks.forEach(walk);
+  const unsupported=[];
+  const docxml=await zr.text("word/document.xml");
+  if(/<w:drawing\b|<w:pict\b/.test(docxml))unsupported.push("그림/도형");
+  if(/<m:oMath\b|<m:oMathPara\b/.test(docxml))unsupported.push("수식");
+  if(/<w:footnoteReference\b/.test(docxml))unsupported.push("각주");
+  if(/<w:endnoteReference\b/.test(docxml))unsupported.push("미주");
+  if(/<w:ins\b|<w:del\b/.test(docxml))unsupported.push("변경 추적");
+  return {blocks,page,fonts:[...fonts],stats,defaults,unsupported};
+}
+
+/* ----------------------- HWPX builder ----------------------- */
+function keyRun(s){return [s.font,s.size,s.b?1:0,s.i?1:0,s.u?1:0,s.color].join("|")}
+function keyPara(s){return [s.align,s.left,s.right,s.first,s.before,s.after,s.line].join("|")}
+
+function collectStyles(m){
+  const fonts=new Map(), chars=new Map(), paras=new Map();
+  const addFont=n=>{n=n||"맑은 고딕";if(!fonts.has(n))fonts.set(n,fonts.size)};
+  const addRun=s=>{addFont(s.font);const k=keyRun(s);if(!chars.has(k))chars.set(k,{id:chars.size,s})};
+  const addPara=s=>{const k=keyPara(s);if(!paras.has(k))paras.set(k,{id:paras.size,s})};
+  const walk=b=>{
+    if(b.type==="p"){addPara(b.style);b.runs.forEach(r=>addRun(r.style))}
+    else for(const row of b.rows)for(const c of row)for(const bb of c.blocks)walk(bb);
+  };m.blocks.forEach(walk);
+  if(!chars.size)addRun(defaultRun); if(!paras.size)addPara(defaultPara);
+  return {fonts,chars,paras};
+}
+function charId(S,s){return S.chars.get(keyRun(s))?.id||0}
+function paraId(S,s){return S.paras.get(keyPara(s))?.id||0}
+function fontId(S,n){return S.fonts.get(n)||0}
+
+function makeHeader(m,S){
+  const fontItems=[...S.fonts.entries()].map(([name,id])=>`<hh:font id="${id}" face="${esc(name)}" type="TTF" isEmbedded="0"><hh:typeInfo familyType="FCAT_UNKNOWN" serifStyle="0" weight="6" proportion="4" contrast="0" strokeVariation="1" armStyle="1" letterform="1" midline="1" xHeight="1"/></hh:font>`).join("");
+  const charItems=[...S.chars.values()].map(({id,s})=>`<hh:charPr id="${id}" height="${Math.max(100,Math.round((s.size||10)*100))}" textColor="${hexColor(s.color)}" shadeColor="none" useFontSpace="0" useKerning="0" symMark="NONE" borderFillIDRef="0">
+    <hh:fontRef hangul="${fontId(S,s.font)}" latin="${fontId(S,s.font)}" hanja="${fontId(S,s.font)}" japanese="${fontId(S,s.font)}" other="${fontId(S,s.font)}" symbol="${fontId(S,s.font)}" user="${fontId(S,s.font)}"/>
+    <hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>
+    <hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
+    <hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>
+    <hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
+    ${s.i?'<hh:italic/>':''}${s.b?'<hh:bold/>':''}
+    <hh:underline type="${s.u?'BOTTOM':'NONE'}" shape="SOLID" color="#000000"/>
+    <hh:strikeout shape="NONE" color="#000000"/><hh:outline type="NONE"/><hh:shadow type="NONE" color="#C0C0C0" offsetX="10" offsetY="10"/>
+  </hh:charPr>`).join("");
+  const paraItems=[...S.paras.values()].map(({id,s})=>`<hh:paraPr id="${id}" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="1">
+    <hh:align horizontal="${s.align||'JUSTIFY'}" vertical="BASELINE"/>
+    <hh:heading type="NONE" idRef="0" level="0"/>
+    <hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="KEEP_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/>
+    <hh:autoSpacing eAsianEng="0" eAsianNum="0"/>
+    <hh:margin><hc:intent value="${s.first||0}" unit="HWPUNIT"/><hc:left value="${s.left||0}" unit="HWPUNIT"/><hc:right value="${s.right||0}" unit="HWPUNIT"/><hc:prev value="${s.before||0}" unit="HWPUNIT"/><hc:next value="${s.after||0}" unit="HWPUNIT"/></hh:margin>
+    <hh:lineSpacing type="PERCENT" value="${s.line||160}" unit="HWPUNIT"/>
+    <hh:border borderFillIDRef="0" offsetLeft="0" offsetRight="0" offsetTop="0" offsetBottom="0" connect="0" ignoreMargin="0"/>
+  </hh:paraPr>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head" xmlns:hc="http://www.hancom.co.kr/hwpml/2011/core" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph" version="1.4" secCnt="1">
+  <hh:beginNum page="1" footnote="1" endnote="1" pic="1" tbl="1" equation="1"/>
+  <hh:refList>
+    <hh:fontfaces itemCnt="1"><hh:fontface lang="HANGUL" fontCnt="${S.fonts.size}">${fontItems}</hh:fontface></hh:fontfaces>
+    <hh:borderFills itemCnt="2">
+      <hh:borderFill id="0" threeD="0" shadow="0" centerLine="NONE" breakCellSeparateLine="0"><hh:leftBorder type="NONE" width="0.1 mm" color="#000000"/><hh:rightBorder type="NONE" width="0.1 mm" color="#000000"/><hh:topBorder type="NONE" width="0.1 mm" color="#000000"/><hh:bottomBorder type="NONE" width="0.1 mm" color="#000000"/><hh:diagonal type="NONE" width="0.1 mm" color="#000000"/></hh:borderFill>
+      <hh:borderFill id="1" threeD="0" shadow="0" centerLine="NONE" breakCellSeparateLine="0"><hh:leftBorder type="SOLID" width="0.12 mm" color="#000000"/><hh:rightBorder type="SOLID" width="0.12 mm" color="#000000"/><hh:topBorder type="SOLID" width="0.12 mm" color="#000000"/><hh:bottomBorder type="SOLID" width="0.12 mm" color="#000000"/><hh:diagonal type="NONE" width="0.1 mm" color="#000000"/></hh:borderFill>
+    </hh:borderFills>
+    <hh:charProperties itemCnt="${S.chars.size}">${charItems}</hh:charProperties>
+    <hh:tabProperties itemCnt="1"><hh:tabPr id="0" autoTabLeft="0" autoTabRight="0"/></hh:tabProperties>
+    <hh:numberings itemCnt="0"/><hh:bullets itemCnt="0"/>
+    <hh:paraProperties itemCnt="${S.paras.size}">${paraItems}</hh:paraProperties>
+    <hh:styles itemCnt="1"><hh:style id="0" type="PARA" name="바탕글" engName="Normal" paraPrIDRef="0" charPrIDRef="0" nextStyleIDRef="0" langID="1042" lockForm="0"/></hh:styles>
+  </hh:refList>
+  <hh:compatibleDocument targetProgram="HWP201X"><hh:layoutCompatibility/></hh:compatibleDocument>
+  <hh:docOption><hh:linkinfo path="" pageInherit="0" footnoteInherit="0"/></hh:docOption>
+</hh:head>`;
+}
+let nextPid=1000000000, nextTbl=1;
+function hpText(t){
+  if(t==="")return "<hp:t/>";
+  const parts=String(t).split("\n");return parts.map((x,i)=>(i?"<hp:lineBreak/>":"")+`<hp:t xml:space="preserve">${esc(x)}</hp:t>`).join("");
+}
+function paraXml(p,S,withSec=false,page=null){
+  const runs=p.runs.map(r=>`<hp:run charPrIDRef="${charId(S,r.style)}">${hpText(r.text)}</hp:run>`).join("");
+  const sec=withSec?`<hp:run charPrIDRef="0"><hp:secPr id="" textDirection="HORIZONTAL" spaceColumns="1134" tabStop="8000" tabStopVal="4000" outlineShapeIDRef="0" memoShapeIDRef="0" textVerticalWidthHead="0">
+    <hp:grid lineGrid="0" charGrid="0" wonggojiFormat="0"/>
+    <hp:startNum pageStartsOn="BOTH" page="0" pic="0" tbl="0" equation="0"/>
+    <hp:visibility hideFirstHeader="0" hideFirstFooter="0" hideFirstMasterPage="0" border="SHOW_ALL" fill="SHOW_ALL" hideFirstPageNum="0" hideFirstEmptyLine="0" showLineNumber="0"/>
+    <hp:lineNumberShape restartType="CONTINUOUS" countBy="1" distance="0" startNumber="1"/>
+    <hp:pagePr landscape="NARROWLY" width="${page.width}" height="${page.height}" gutterType="LEFT_ONLY">
+      <hp:margin left="${page.left}" right="${page.right}" top="${page.top}" bottom="${page.bottom}" header="${page.header}" footer="${page.footer}" gutter="0"/>
+    </hp:pagePr>
+    <hp:footNotePr><hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar=")" supscript="1"/><hp:noteLine length="-1" type="SOLID" width="0.12 mm" color="#000000"/><hp:noteSpacing betweenNotes="283" belowLine="567" aboveLine="850"/><hp:numbering type="CONTINUOUS" newNum="1"/><hp:placement place="EACH_COLUMN" beneathText="0"/></hp:footNotePr>
+    <hp:endNotePr><hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar=")" supscript="1"/><hp:noteLine length="14692344" type="SOLID" width="0.12 mm" color="#000000"/><hp:noteSpacing betweenNotes="0" belowLine="567" aboveLine="850"/><hp:numbering type="CONTINUOUS" newNum="1"/><hp:placement place="END_OF_DOCUMENT" beneathText="0"/></hp:endNotePr>
+    <hp:pageBorderFill type="BOTH" borderFillIDRef="0" textBorder="PAPER" headerInside="0" footerInside="0" fillArea="PAPER"/>
+  </hp:secPr><hp:ctrl><hp:colPr id="" type="NEWSPAPER" layout="LEFT" colCount="1" sameSz="1" sameGap="0"/></hp:ctrl></hp:run>`:"";
+  return `<hp:p id="${nextPid++}" paraPrIDRef="${paraId(S,p.style)}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${sec}${runs}</hp:p>`;
+}
+function blocksXml(blocks,S){
+  return blocks.map(b=>b.type==="p"?paraXml(b,S):tableWrapXml(b,S)).join("");
+}
+function tableWrapXml(t,S){
+  const widths=t.gridWidths.length?t.gridWidths:Array(t.colCnt).fill(Math.floor(48000/t.colCnt));
+  const total=widths.reduce((a,b)=>a+b,0)||48000;
+  let rows="";
+  for(let r=0;r<t.rows.length;r++){
+    let cells="";
+    for(const c of t.rows[r]){
+      if(c.skip)continue;
+      const w=c.width||widths.slice(c.col,c.col+c.span).reduce((a,b)=>a+b,0)||Math.floor(total/t.colCnt)*c.span;
+      let content=blocksXml(c.blocks,S); if(!content)content=paraXml({style:defaultPara,runs:[{text:"",style:defaultRun}]},S);
+      cells+=`<hp:tc name="" header="0" hasMargin="1" protect="0" editable="0" dirty="0" borderFillIDRef="1">
+        <hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">${content}</hp:subList>
+        <hp:cellAddr colAddr="${c.col}" rowAddr="${r}"/><hp:cellSpan colSpan="${c.span}" rowSpan="${c.rowSpan||1}"/>
+        <hp:cellSz width="${Math.max(300,w)}" height="1800"/><hp:cellMargin left="141" right="141" top="141" bottom="141"/>
+      </hp:tc>`;
+    }
+    rows+=`<hp:tr>${cells}</hp:tr>`;
+  }
+  return `<hp:p id="${nextPid++}" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"><hp:run charPrIDRef="0">
+    <hp:tbl id="${nextTbl++}" zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL" repeatHeader="1" rowCnt="${t.rows.length}" colCnt="${t.colCnt}" cellSpacing="0" borderFillIDRef="1" noAdjust="0">
+      <hp:sz width="${total}" widthRelTo="ABSOLUTE" height="0" heightRelTo="ABSOLUTE" protect="0"/>
+      <hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>
+      <hp:outMargin left="0" right="0" top="0" bottom="0"/><hp:inMargin left="141" right="141" top="141" bottom="141"/>
+      ${rows}
+    </hp:tbl><hp:t/></hp:run></hp:p>`;
+}
+function makeSection(m,S){
+  nextPid=1000000000;nextTbl=1;
+  const dummy={type:"p",style:m.defaults.para,runs:[{text:"",style:m.defaults.run}]};
+  let body=paraXml(dummy,S,true,m.page);
+  body+=blocksXml(m.blocks,S);
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph" xmlns:hc="http://www.hancom.co.kr/hwpml/2011/core">${body}</hs:sec>`;
+}
+function makeContentHPF(title){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<opf:package xmlns:opf="http://www.idpf.org/2007/opf/" xmlns:dc="http://purl.org/dc/elements/1.1/" version="1.4">
+<opf:metadata><dc:title>${esc(title)}</dc:title><dc:creator>DOCX→HWPX 브라우저 변환기</dc:creator><dc:language>ko</dc:language></opf:metadata>
+<opf:manifest>
+<opf:item id="header" href="header.xml" media-type="application/xml"/>
+<opf:item id="section0" href="section0.xml" media-type="application/xml"/>
+</opf:manifest>
+<opf:spine><opf:itemref idref="section0"/></opf:spine>
+</opf:package>`;
+}
+const containerXml=`<?xml version="1.0" encoding="UTF-8"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="Contents/content.hpf" media-type="application/hwp+zip"/></rootfiles></container>`;
+const versionXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><ha:HCFVersion xmlns:ha="http://www.hancom.co.kr/hwpml/2011/app" targetApplication="WORDPROCESSOR" major="5" minor="1" micro="0" buildNumber="0" osName="Windows" osVersion="10"/>`;
+const settingsXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><ha:HWPApplicationSetting xmlns:ha="http://www.hancom.co.kr/hwpml/2011/app"><ha:CaretPosition listIDRef="0" paraIDRef="1000000000" pos="0"/></ha:HWPApplicationSetting>`;
+
+async function buildHwpx(m,file){
+  progress(58,"HWPX 글자/문단 스타일 생성 중");
+  const S=collectStyles(m);
+  progress(69,"HWPX 본문 및 표 생성 중");
+  const header=makeHeader(m,S), section=makeSection(m,S);
+  const base=file.name.replace(/\.docx$/i,"");
+  progress(82,"HWPX 패키지 구성 중");
+  const zw=new ZipWriter();
+  // mimetype must be first and stored
+  zw.add("mimetype","application/hwp+zip");
+  zw.add("version.xml",versionXml);
+  zw.add("settings.xml",settingsXml);
+  zw.add("META-INF/container.xml",containerXml);
+  zw.add("Contents/content.hpf",makeContentHPF(base));
+  zw.add("Contents/header.xml",header);
+  zw.add("Contents/section0.xml",section);
+  zw.add("Preview/PrvText.txt",m.blocks.filter(x=>x.type==="p").map(p=>p.runs.map(r=>r.text).join("")).join("\n"));
+  progress(94,"ZIP 패키지 마무리 중");
+  const bytes=zw.build();
+  progress(100,"완료");
+  return new Blob([bytes],{type:"application/hwp+zip"});
+}
+
+/* ----------------------- UI ----------------------- */
+function resetStats(){["#stP","#stT","#stC","#stF"].forEach(x=>$(x).textContent="-");$("#preview").innerHTML='<span class="sub">아직 분석된 문서가 없습니다.</span>';$("#warnings").textContent=""}
+function choose(f){
+  if(!f)return;
+  if(!/\.docx$/i.test(f.name)){setStatus("DOCX 파일만 선택할 수 있습니다.","err");return}
+  selectedFile=f;model=null;resetStats();$("#fileName").style.display="block";$("#fileName").textContent=`선택 파일: ${f.name}  ·  ${(f.size/1024/1024).toFixed(2)} MB`;
+  $("#analyze").disabled=false;$("#convert").disabled=false;setStatus("파일이 준비되었습니다. ‘문서 분석’으로 구조를 확인하거나 바로 변환할 수 있습니다.");$("#pw").style.display="none";
+}
+$("#file").addEventListener("change",e=>choose(e.target.files[0]));
+const drop=$("#drop");
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("drag")}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("drag")}));
+drop.addEventListener("drop",e=>choose(e.dataTransfer.files[0]));
+
+async function analyze(){
+  if(!selectedFile)return;
+  try{
+    $("#analyze").disabled=true;setStatus("문서를 분석하고 있습니다…");model=await parseDocx(selectedFile);
+    $("#stP").textContent=model.stats.p.toLocaleString();$("#stT").textContent=model.stats.t.toLocaleString();$("#stC").textContent=model.stats.c.toLocaleString();$("#stF").textContent=model.fonts.length.toLocaleString();
+    renderPreview(model);
+    const u=model.unsupported.length?` 감지된 Word 전용 요소: ${model.unsupported.join(", ")}.`:"";
+    setStatus(`분석 완료: 문단 ${model.stats.p}개, 표 ${model.stats.t}개, 표 셀 ${model.stats.c}개를 확인했습니다.${u}`,model.unsupported.length?"warn":"ok");
+    return model;
+  }catch(e){console.error(e);setStatus("분석 실패: "+e.message,"err");throw e}
+  finally{$("#analyze").disabled=false}
+}
+function renderPreview(m){
+  let html="",count=0;
+  const pHtml=p=>`<div class="pv-p" style="text-align:${({LEFT:"left",CENTER:"center",RIGHT:"right",JUSTIFY:"justify"})[p.style.align]||"left"}">${p.runs.map(r=>`<span style="font-family:${esc(r.style.font)};font-size:${Math.min(18,r.style.size||10)}px;font-weight:${r.style.b?700:400};font-style:${r.style.i?"italic":"normal"};text-decoration:${r.style.u?"underline":"none"};color:${r.style.color}">${esc(r.text).replace(/\n/g,"<br>")}</span>`).join("")}</div>`;
+  for(const b of m.blocks){
+    if(count>35)break;
+    if(b.type==="p"){html+=pHtml(b);count++}
+    else{
+      html+='<table class="pv-table">';
+      for(const row of b.rows){html+="<tr>";for(const c of row){if(c.skip)continue;html+=`<td colspan="${c.span}" rowspan="${c.rowSpan||1}" style="background:${c.fill}">${c.blocks.filter(x=>x.type==="p").map(p=>p.runs.map(r=>esc(r.text)).join("")).join("<br>")}</td>`}html+="</tr>"}html+="</table>";count++;
+    }
+  }
+  if(m.blocks.length>count)html+=`<div class="small">… 미리보기는 앞부분 ${count}개 블록만 표시합니다.</div>`;
+  $("#preview").innerHTML=html||'<span class="sub">빈 문서입니다.</span>';
+  $("#warnings").textContent=m.unsupported.length?`주의: ${m.unsupported.join(", ")} 요소가 발견되었습니다. 해당 요소는 호환성 우선 모드에서 생략될 수 있습니다.`:"문서 내에서 주요 미지원 Word 전용 요소가 감지되지 않았습니다.";
+}
+$("#analyze").addEventListener("click",analyze);
+$("#convert").addEventListener("click",async()=>{
+  if(!selectedFile)return;
+  try{
+    $("#convert").disabled=true;setStatus("변환을 시작합니다…");
+    if(!model)model=await parseDocx(selectedFile);
+    const blob=await buildHwpx(model,selectedFile);
+    const name=selectedFile.name.replace(/\.docx$/i,"")+".hwpx";
+    downloadBlob(blob,name);
+    setStatus(`변환 완료: ${name}\n한글에서 파일을 열어 표 너비, 페이지 나눔, 설치 글꼴 차이를 최종 확인해 주세요.`,"ok");
+  }catch(e){console.error(e);setStatus("변환 실패: "+e.message+"\n최신 Chrome 또는 Edge에서 다시 시도해 주세요.","err")}
+  finally{$("#convert").disabled=false}
+});
+</script>
+</body>
+</html>
